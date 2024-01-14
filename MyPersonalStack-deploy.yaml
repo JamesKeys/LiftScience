@@ -3,59 +3,101 @@ AWSTemplateFormatVersion: 2010-09-09
 Parameters:
   InstanceType:
     Type: String
-    Description: The Instance Type to use when launching the instance, t2.micro is free.
+    Description: 'The Instance Type to use when launching the instance, t2.micro is free.'
     Default: t2.micro
     AllowedValues:
-      - t2.micro # Only allow free-level
-      
+      - t2.micro
+
   ImageId:
     Type: String
     Description: AMI for the instance to run on.
     Default: ami-023c11a32b0207432
-
+  
   VPCId:
     Type: String
     Description: The Default VPC of US-East-1
     Default: vpc-05f392f89c21fe8cd
     AllowedValues:
       - vpc-05f392f89c21fe8cd
-
+  
   MySecurityGroup:
     Type: String
     Description: The Default SG
     Default: sg-067bd738f3c2f4c3c
     AllowedValues:
       - sg-067bd738f3c2f4c3c
+      
 
 Resources:
   MyKeyPair:
-    Type: AWS::EC2::KeyPair
+    Type: 'AWS::EC2::KeyPair'
     Properties:
       KeyFormat: pem
       KeyName: MyKeyPair
       KeyType: rsa
-      
+
   MyLaunchTemplate:
-    Type: AWS::EC2::LaunchTemplate
+    Type: 'AWS::EC2::LaunchTemplate'
     Properties:
       LaunchTemplateName: WebsiteLaunchTemplate
       VersionDescription: Version 1
       LaunchTemplateData:
-        ImageId: !Ref ImageId 
+        ImageId: !Ref ImageId
         InstanceType: !Ref InstanceType
         KeyName: !Ref MyKeyPair
         SecurityGroupIds:
           - !Ref MySecurityGroup
-        UserData: !Base64 "
-        yum install docker
-        
-        aws s3 cp s3://jameskeys-s3bucket/site-service.tgz .
-        docker load site-service.tgz
-
-        docker start site-service
-        "
+        UserData:
+          Fn::Base64: 
+            !Sub |
+              #!/bin/bash
+              
+              yum install docker
+              aws s3 cp s3://jameskeys-s3bucket/site-service.tgz . 
+              docker load site-service.tgz
+              docker start site-service
         TagSpecifications:
-          - ResourceType: "instance"
+          - ResourceType: instance
             Tags:
-              - Key: "Name"
-                Value: "MyInstance"
+              - Key: Name
+                Value: MyInstance
+                
+  MyLoadBalancer:
+    Type: 'AWS::ElasticLoadBalancingV2::LoadBalancer'
+    Properties:
+      IpAddressType: ipv4
+      Name: MyLoadBalancer
+      Scheme: internet-facing
+      SecurityGroups: 
+        - !Ref MySecurityGroup
+      Subnets:
+        - subnet-04e65162cc18d610d # default subnet us-east-1a
+        - subnet-083a18e67d7c3aa4d # defualt subnet us-east-1b
+      Type: application
+      
+  MyTargetGroup:
+    Type: "AWS::ElasticLoadBalancingV2::TargetGroup"
+    Properties:
+      Name: MyTargetGroup
+      Port: 80
+      Protocol: HTTP
+      Targets:
+        - !Ref MyLoadBalancer
+      TargetType: alb
+      VpcId: !Ref VPCId
+      
+  MyLoadBalancerListener:
+    Type: "AWS::ElasticLoadBalancingV2::Listener"
+    Properties:
+      DefaultActions:
+        - Type: Forward
+          TargetGroupArn: !Ref MyTargetGroup
+          
+  MyAutoScalingGroup:
+    Type: 'AWS::AutoScaling::AutoScalingGroup'
+    Properties:
+      AutoScalingGroupName: MyAutoScalingGroup
+      DesiredCapacity: 1
+      TargetGroupARNs:
+        - !Ref MyTargetGroup
+      LaunchTemplate: !Ref MyLaunchTemplate
