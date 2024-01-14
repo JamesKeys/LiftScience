@@ -1,0 +1,59 @@
+Parameters:
+  InstanceType:
+    Type: String
+    Description: The Instance Type to use when launching the instance, t2.micro is free.
+    Default: t2.micro
+    AllowedValues:
+      - t2.micro # Only allow free-level
+      
+  ImageId:
+    Type: String
+    Description: AMI for the instance to run on.
+    Default: ami-023c11a32b0207432
+
+  VPCId:
+    Type: String
+    Description: The Default VPC of US-East-1
+    Default: vpc-05f392f89c21fe8cd
+    AllowedValues:
+      - vpc-05f392f89c21fe8cd
+
+  MySecurityGroup:
+    Type: String
+    Description: The Default SG
+    Default: sg-067bd738f3c2f4c3c
+    AllowedValues:
+      - sg-067bd738f3c2f4c3c
+
+Resources:
+  MyKeyPair:
+    Type: AWS::EC2::KeyPair
+    Properties:
+      KeyFormat: pem
+      KeyName: MyKeyPair
+      KeyType: rsa
+      
+  MyLaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateName: WebsiteLaunchTemplate
+      VersionDescription: Version 1
+      LaunchTemplateData:
+        ImageId: !Ref ImageId 
+        InstanceType: !Ref InstanceType
+        KeyName: !Ref MyKeyPair
+        SecurityGroupIds:
+          - !Ref MySecurityGroup
+        UserData: !Base64 "
+        yum install docker
+        
+        aws s3 cp s3://jameskeys-s3bucket/site-service.tgz .
+        docker load site-service.tgz
+
+        docker start site-service
+        "
+        TagSpecifications:
+          - ResourceType: "instance"
+            Tags:
+              - Key: "Name"
+                Value: "MyInstance"
